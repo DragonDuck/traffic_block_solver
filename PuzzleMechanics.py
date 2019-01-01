@@ -1,12 +1,22 @@
 import numpy as np
 
 
+class SpaceOccupiedException(Exception):
+    pass
+
+
+class OutOfBoundsException(Exception):
+    pass
+
+
 class PuzzlePiece(object):
-    """
-    x- and y- coordinates are the top left corner of object on the board array
-    """
     def __init__(self, height, width, x, y, _id=None):
         """
+        This class represents a single puzzle piece.
+
+        x- and y- coordinates are the top left corner of object on the board
+        array
+
         :param height:
         :param width:
         :param x:
@@ -51,10 +61,56 @@ class PuzzlePiece(object):
 
 class PuzzleBoard(object):
     def __init__(self, height, width):
+        """
+        This class represents a board, consisting of N x M fields in which
+        puzzle pieces can be placed. This class allows the placement,
+        movement, and removal of pieces and tests for the validity of these
+        actions.
+
+        It also keeps track of the "winning piece" and the goal
+        position of this piece. These two properties can be set with the
+        set_winning_piece() and set_goal() functions, respectively.
+        Alternatively, static functions exist to make constructing a puzzle
+        easier.
+
+        :param height:
+        :param width:
+        """
         self._height = height
         self._width = width
         self._board = np.zeros(shape=(height, width), dtype=np.uint64)
         self._pieces = {}
+        self._winning_piece_id = None
+        self._goal_x = self._goal_y = None
+
+    @staticmethod
+    def create_puzzle(width, height, pieces, winning_id, goal_x, goal_y):
+        """
+        A helper function to create a complete puzzle.
+
+        :param width:
+        :param height:
+        :param pieces: An iterable of PuzzlePiece objects or dictionaries with
+        keys corresponding to the constructor of the PuzzlePiece function.
+        Piece IDs are assigned by their order in the iterable.
+        :param winning_id: The ID of the winning piece.
+        :param goal_x: The x-coordinate the winning piece must reach
+        :param goal_y: The y-coordinate the winning piece must reach
+        :return:
+        """
+        board = PuzzleBoard(height=height, width=width)
+        board.set_winning_piece(piece_id=winning_id)
+        for pid, piece in enumerate(pieces):
+            if not isinstance(piece, PuzzlePiece):
+                piece = PuzzlePiece(_id=pid+1, **piece)
+            board.add_piece(piece=piece)
+        board.set_goal(x=goal_x, y=goal_y)
+
+        # Check that the winning piece doesn't actually start on the goal
+        winning_piece = board.get_winning_piece()
+        if (winning_piece.get_x() == goal_x) and (winning_piece.get_y() == goal_y):
+            raise ValueError("Trivial puzzle: winning piece is already on the goal")
+        return board
 
     def get_width(self):
         return self._width
@@ -70,6 +126,19 @@ class PuzzleBoard(object):
 
     def get_board(self):
         return self._board
+
+    def get_winning_piece(self):
+        return self._pieces[self._winning_piece_id]
+
+    def set_winning_piece(self, piece_id):
+        self._winning_piece_id = piece_id
+
+    def get_goal(self):
+        return self._goal_x, self._goal_y
+
+    def set_goal(self, x, y):
+        self._goal_x = x
+        self._goal_y = y
 
     def add_piece(self, piece):
         """
@@ -89,12 +158,12 @@ class PuzzleBoard(object):
 
         # Check that piece is completely in-bounds
         if p_x_start < 0 or p_x_end > self._width or \
-                p_y_start < 0 or p_y_end > self._height:
-            raise ValueError("Puzzle piece is out of bounds")
+           p_y_start < 0 or p_y_end > self._height:
+            raise OutOfBoundsException("Puzzle piece is out of bounds")
 
         # Check that board is still empty at all positions
         if np.any(self._board[p_y_start:p_y_end, p_x_start:p_x_end] != 0):
-            raise ValueError("Board is occupied at this position")
+            raise SpaceOccupiedException("Board is occupied at this position")
 
         self._board[p_y_start:p_y_end, p_x_start:p_x_end] = pid
         self._pieces[piece.get_id()] = piece
@@ -113,8 +182,7 @@ class PuzzleBoard(object):
 
     def move_piece(self, piece_id, delta_x, delta_y):
         """
-        Move a piece along the board. Checks that the
-        move is permitted
+        Move a piece along the board. Checks that the move is permitted
         :param piece_id:
         :param delta_x:
         :param delta_y:
@@ -140,41 +208,24 @@ class PuzzleBoard(object):
         # Check that new coords are completely in-bounds
         if p_x_start_new < 0 or p_x_end_new > self._width or \
                 p_y_start_new < 0 or p_y_end_new > self._height:
-            raise ValueError("Puzzle piece cannot be moved out of bounds")
+            raise OutOfBoundsException("Puzzle piece cannot be moved out of bounds")
 
         # Check that no other piece is in the new positions
-        new_location = self._board[p_y_start_new:p_y_end_new, p_x_start_new:p_x_end_new]
+        new_location = self._board[
+            p_y_start_new:p_y_end_new,
+            p_x_start_new:p_x_end_new]
         if not np.all((new_location == 0) | (new_location == piece_id)):
-            raise ValueError("Board is occupied at this position")
+            raise SpaceOccupiedException("Board is occupied at this position")
 
         self._board[p_y_start:p_y_end, p_x_start:p_x_end] = 0
-        self._board[p_y_start_new:p_y_end_new, p_x_start_new:p_x_end_new] = piece_id
+        self._board[
+            p_y_start_new:p_y_end_new,
+            p_x_start_new:p_x_end_new] = piece_id
         self._pieces[piece_id].set_x(p_x_start_new)
         self._pieces[piece_id].set_y(p_y_start_new)
 
-
-def test_board():
-    board = PuzzleBoard(5, 5)
-    print(board.get_board())
-
-    piece = PuzzlePiece(height=3, width=2, x=2, y=1, _id=1)
-    board.add_piece(piece)
-    print(board.get_board())
-
-    piece = PuzzlePiece(height=1, width=2, x=0, y=0, _id=2)
-    board.add_piece(piece)
-    print(board.get_board())
-    for piece in board.get_pieces():
-        print(board.get_piece(piece))
-
-    board.remove_piece(1)
-    print(board.get_board())
-
-    board.move_piece(piece_id=2, delta_x=1, delta_y=1)
-    print(board.get_board())
-
-    for piece in board.get_pieces():
-        print(board.get_piece(piece))
-
-
-test_board()
+    def check_win(self):
+        if (self.get_winning_piece().get_x() == self._goal_x) and \
+           (self.get_winning_piece().get_y() == self._goal_y):
+            return True
+        return False
